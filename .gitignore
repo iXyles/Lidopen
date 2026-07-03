@@ -1,0 +1,21 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode
+DerivedData/
+*.xcworkspace
+xcuserdata/
+*.xcuserstate
+*.xcodeproj/project.xcworkspace/
+
+# macOS
+.DS_Store
+
+# Editor / local
+.idea/
+.vscode/
+
+# build script dist
+dist/
