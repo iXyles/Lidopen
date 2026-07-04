@@ -226,6 +226,83 @@ import Testing
     #expect(backend.restoreCalls == 1)
 }
 
+@Test func restoreWatchdogPausesWhileScreensAreSleeping() {
+    let scheduler = TestScheduler()
+    let identity = MonitorIdentity.sample(name: "Home")
+    let backend = FakeBackend()
+    let store = InMemorySettingsStore(
+        appMode: .auto,
+        builtInDisabledByApp: false,
+        monitorRules: [identity: MonitorRule(identity: identity, preference: .disableBuiltIn, lastSeenName: "Home")]
+    )
+    let provider = FakeSnapshotProvider(snapshot: DisplaySnapshot(displays: [.builtIn(), .external(identity: identity)]))
+    let controller = DisplayController(
+        snapshotProvider: provider,
+        policy: DisplayPolicy(),
+        backend: backend,
+        settingsStore: store,
+        logger: EventLogger(),
+        scheduler: scheduler,
+        timing: DisplayControllerTiming(
+            evaluationDebounceInterval: 0.5,
+            topologySettleInterval: 2.0,
+            failureRetryInterval: 10
+        )
+    )
+
+    controller.requestEvaluation(reason: "disable first")
+    scheduler.advance(by: 0.5)
+    #expect(store.builtInDisabledByApp == true)
+    #expect(backend.disableCalls == 1)
+
+    controller.notifyScreensDidSleep()
+    provider.snapshot = DisplaySnapshot(displays: [])
+    scheduler.advance(by: 10.0)
+
+    #expect(store.builtInDisabledByApp == true)
+    #expect(backend.restoreCalls == 0)
+
+    controller.notifyScreensDidWake()
+    scheduler.advance(by: 2.0)
+
+    #expect(store.builtInDisabledByApp == false)
+    #expect(backend.restoreCalls == 1)
+}
+
+@Test func pendingAutomaticEvaluationIsCancelledWhenSystemSleeps() {
+    let scheduler = TestScheduler()
+    let identity = MonitorIdentity.sample(name: "Home")
+    let backend = FakeBackend()
+    let store = InMemorySettingsStore(
+        appMode: .auto,
+        monitorRules: [identity: MonitorRule(identity: identity, preference: .disableBuiltIn, lastSeenName: "Home")]
+    )
+    let controller = DisplayController(
+        snapshotProvider: FakeSnapshotProvider(snapshot: DisplaySnapshot(displays: [.builtIn(), .external(identity: identity)])),
+        policy: DisplayPolicy(),
+        backend: backend,
+        settingsStore: store,
+        logger: EventLogger(),
+        scheduler: scheduler,
+        timing: DisplayControllerTiming(
+            evaluationDebounceInterval: 1.0,
+            topologySettleInterval: 2.0,
+            failureRetryInterval: 10
+        )
+    )
+
+    controller.requestEvaluation(reason: "display changed")
+    controller.notifyWillSleep()
+    scheduler.advance(by: 10.0)
+
+    #expect(backend.disableCalls == 0)
+
+    controller.notifyDidWake()
+    scheduler.advance(by: 2.0)
+
+    #expect(backend.disableCalls == 1)
+}
+
 @Test func restoreWatchdogIgnoresPhantomExternalThatIsMissingFromIORegistry() {
     let scheduler = TestScheduler()
     let identity = MonitorIdentity.sample(name: "Home")

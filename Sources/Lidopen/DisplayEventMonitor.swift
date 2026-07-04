@@ -49,6 +49,10 @@ final class DisplayEventMonitor {
             action: { $0.notifyDidWake() }
         )
         observeWorkspaceNotification(
+            forName: NSWorkspace.screensDidSleepNotification,
+            action: { $0.notifyScreensDidSleep() }
+        )
+        observeWorkspaceNotification(
             forName: NSWorkspace.screensDidWakeNotification,
             action: { $0.notifyScreensDidWake() }
         )

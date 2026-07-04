@@ -11,7 +11,15 @@ APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
 INSTALL_PATH="/Applications/$APP_NAME.app"
 ICONSET_PATH="$OUTPUT_DIR/AppIcon.iconset"
 ICNS_PATH="$OUTPUT_DIR/AppIcon.icns"
+VERSION_FILE="$ROOT_DIR/VERSION"
+APP_VERSION="${LIDOPEN_VERSION:-$(tr -d '[:space:]' < "$VERSION_FILE")}"
+BUILD_NUMBER="${LIDOPEN_BUILD_NUMBER:-1}"
+APP_ARCH="${LIDOPEN_ARCH:-$(uname -m)}"
+DMG_STAGING_DIR="$OUTPUT_DIR/dmg"
+DMG_VOLUME_NAME="$APP_NAME $APP_VERSION"
+DMG_PATH="$OUTPUT_DIR/$APP_NAME-$APP_VERSION-macos-$APP_ARCH.dmg"
 INSTALL_APP=false
+CREATE_DMG=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -23,18 +31,37 @@ while [[ $# -gt 0 ]]; do
       INSTALL_APP=true
       shift
       ;;
+    --dmg|--archive)
+      CREATE_DMG=true
+      shift
+      ;;
     *)
       echo "Unknown argument: $1" >&2
-      echo "Usage: $0 [--debug] [--install]" >&2
+      echo "Usage: $0 [--debug] [--install] [--dmg]" >&2
       exit 1
       ;;
   esac
 done
 
+if [[ ! "$APP_VERSION" =~ '^[0-9]+[.][0-9]+[.][0-9]+$' ]]; then
+  echo "Invalid app version: $APP_VERSION" >&2
+  echo "Expected format: MAJOR.MINOR.PATCH" >&2
+  exit 1
+fi
+
+if [[ ! "$BUILD_NUMBER" =~ '^[0-9]+$' ]]; then
+  echo "Invalid build number: $BUILD_NUMBER" >&2
+  echo "Expected a positive integer." >&2
+  exit 1
+fi
+
 mkdir -p "$OUTPUT_DIR"
 rm -rf "$APP_BUNDLE"
 rm -rf "$ICONSET_PATH"
+rm -rf "$DMG_STAGING_DIR"
+rm -rf "$OUTPUT_DIR"/dmg-mount.*(N)
 rm -f "$ICNS_PATH"
+rm -f "$DMG_PATH"
 
 if [[ -n "${CLANG_MODULE_CACHE_PATH:-}" ]]; then
   mkdir -p "$CLANG_MODULE_CACHE_PATH"
@@ -49,7 +76,7 @@ swift build -c "$BUILD_CONFIG" --package-path "$ROOT_DIR"
 swift "$ROOT_DIR/Scripts/generate_icon.swift" "$ICONSET_PATH"
 iconutil -c icns "$ICONSET_PATH" -o "$ICNS_PATH"
 
-BUILD_DIR="$ROOT_DIR/.build/arm64-apple-macosx/$BUILD_CONFIG"
+BUILD_DIR="$(swift build -c "$BUILD_CONFIG" --package-path "$ROOT_DIR" --show-bin-path)"
 EXECUTABLE_PATH="$BUILD_DIR/$EXECUTABLE_NAME"
 
 if [[ ! -x "$EXECUTABLE_PATH" ]]; then
@@ -85,9 +112,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>$BUILD_NUMBER</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.utilities</string>
   <key>LSMinimumSystemVersion</key>
@@ -102,6 +129,24 @@ EOF
 
 echo "Built app bundle at:"
 echo "  $APP_BUNDLE"
+echo "Version:"
+echo "  $APP_VERSION ($BUILD_NUMBER)"
+
+if [[ "$CREATE_DMG" == true ]]; then
+  mkdir -p "$DMG_STAGING_DIR"
+  cp -R "$APP_BUNDLE" "$DMG_STAGING_DIR/$APP_NAME.app"
+  ln -s /Applications "$DMG_STAGING_DIR/Applications"
+
+  hdiutil create \
+    -volname "$DMG_VOLUME_NAME" \
+    -srcfolder "$DMG_STAGING_DIR" \
+    -ov \
+    -format UDZO \
+    "$DMG_PATH"
+
+  echo "Created DMG at:"
+  echo "  $DMG_PATH"
+fi
 
 if [[ "$INSTALL_APP" == true ]]; then
   if [[ -d "$INSTALL_PATH" ]]; then

@@ -29,6 +29,12 @@ This is a personal sideloaded utility. It is not designed as an App Store distri
 
 Because the app depends on private display APIs, behavior may vary across macOS releases and hardware.
 
+## Install
+
+Download the DMG from the GitHub Releases page, open it, and drag `Lidopen.app` to `Applications`.
+
+Published DMG files are currently unsigned and not notarized. macOS may require approving the app in System Settings before first launch. If you prefer not to use the published DMG, build the app locally from source with the commands below.
+
 ## Build
 
 Build the package:
@@ -41,6 +47,14 @@ Build the app bundle:
 
 ```bash
 ./Scripts/build_app.sh
+```
+
+The app version is read from `VERSION`. The generated bundle is written to `dist/Lidopen.app`.
+
+Build a downloadable DMG:
+
+```bash
+./Scripts/build_app.sh --dmg
 ```
 
 If SwiftPM cache or manifest sandboxing is restricted in your environment:
@@ -59,13 +73,13 @@ SWIFT_MODULE_CACHE_PATH=/private/tmp/swift-mod \
 ./Scripts/build_app.sh
 ```
 
-The generated bundle is written to `dist/Lidopen.app`.
-
 To build and install into `/Applications`:
 
 ```bash
 ./Scripts/build_app.sh --install
 ```
+
+The local install command replaces `/Applications/Lidopen.app`. It first asks the running app to quit and refuses to replace the app while the process is still active.
 
 ## Run
 
@@ -115,4 +129,9 @@ Sources/
 Tests/
   LidopenCoreTests/
 Package.swift
+Scripts/
+  build_app.sh
+  generate_icon.swift
+.github/workflows/
+  release.yml
 ```

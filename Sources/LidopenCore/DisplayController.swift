@@ -33,6 +33,7 @@ public final class DisplayController: @unchecked Sendable {
     private var restoreWatchdogTask: ScheduledTask?
     private var state: ControllerState
     private var lastKnownBuiltInDisplay: DisplayInfo?
+    private var automaticEvaluationsAreSuspended = false
 
     public init(
         snapshotProvider: DisplaySnapshotProviding,
@@ -69,6 +70,11 @@ public final class DisplayController: @unchecked Sendable {
     }
 
     public func requestEvaluation(reason: String, debounce: Bool = true) {
+        guard !automaticEvaluationsAreSuspended else {
+            logger.info("Skipping evaluation while displays are sleeping: \(reason)")
+            return
+        }
+
         logger.info("Queueing evaluation: \(reason)")
         pendingEvaluation?.cancel()
         let settleTime = remainingTopologySettleTime()
@@ -80,16 +86,24 @@ public final class DisplayController: @unchecked Sendable {
 
     public func notifyWillSleep() {
         logger.info("System will sleep")
+        suspendAutomaticEvaluations()
     }
 
     public func notifyDidWake() {
         logger.info("System did wake")
+        resumeAutomaticEvaluations()
         topologySettleUntil = scheduler.now.addingTimeInterval(timing.topologySettleInterval)
         requestEvaluation(reason: "System wake", debounce: true)
     }
 
+    public func notifyScreensDidSleep() {
+        logger.info("Screens did sleep")
+        suspendAutomaticEvaluations()
+    }
+
     public func notifyScreensDidWake() {
         logger.info("Screens did wake")
+        resumeAutomaticEvaluations()
         topologySettleUntil = scheduler.now.addingTimeInterval(timing.topologySettleInterval)
         requestEvaluation(reason: "Screens wake", debounce: true)
     }
@@ -171,6 +185,18 @@ public final class DisplayController: @unchecked Sendable {
     private func remainingFailureRetryTime() -> TimeInterval {
         guard let failureRetryAfter else { return 0 }
         return max(0, failureRetryAfter.timeIntervalSince(scheduler.now))
+    }
+
+    private func suspendAutomaticEvaluations() {
+        automaticEvaluationsAreSuspended = true
+        pendingEvaluation?.cancel()
+        pendingEvaluation = nil
+        restoreWatchdogTask?.cancel()
+        restoreWatchdogTask = nil
+    }
+
+    private func resumeAutomaticEvaluations() {
+        automaticEvaluationsAreSuspended = false
     }
 
     private func evaluate(reason: String, forcedDecision: DisplayDecision? = nil) {
@@ -333,6 +359,12 @@ public final class DisplayController: @unchecked Sendable {
     }
 
     private func syncRestoreWatchdog() {
+        guard !automaticEvaluationsAreSuspended else {
+            restoreWatchdogTask?.cancel()
+            restoreWatchdogTask = nil
+            return
+        }
+
         if settingsStore.builtInDisabledByApp {
             guard restoreWatchdogTask == nil else {
                 return
